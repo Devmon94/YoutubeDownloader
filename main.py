@@ -1,6 +1,7 @@
 # IMPORTS
 from pytubefix import YouTube
 from pytubefix.cli import on_progress
+from pytubefix.exceptions import VideoUnavailable, RegexMatchError
 from tkinter.filedialog import askdirectory
 from threading import Thread
 from pathlib import Path
@@ -14,16 +15,7 @@ import ffmpeg
 import json
 import traceback
 
-# Preparar app por si la ruta no existe
-# Encapsular clases
-
-# https://www.youtube.com/watch?v=Ci_h4nJRga0
-
-
-# VARIABLES
-outputPath = r"C:\Users\mamec\Documents\VS projects\Pytube"
-
-# CONSTANTES
+# CONSTANTS
 MP3 = ".MP3"
 MP4 = ".MP4"
 
@@ -69,10 +61,13 @@ def save_config(theme_name=None, save_path=None):
 def load_config():
     if CONFIG_FILE.exists():
         with open(CONFIG_FILE, "r") as f:
-            config = json.load(f)
-            return config.get("theme", "system")
-    return "system"
+            global selectedOutputPath
 
+            config = json.load(f)
+            change_theme(config.get("theme"))  
+            selectedOutputPath = config.get("path")    
+            entry_output.configure(placeholder_text = selectedOutputPath)
+    
 # CHECKS IF CONFIG FILE EXIST AND CREATES OR LOADS IT
 def check_config_file():
     global APP_DIR, CONFIG_FILE
@@ -108,11 +103,11 @@ def start_download_thread():
 
 # (NO TOCAR) DOWNLOAD LOGIC
 def download_youtube_video():
-    youtube = YouTube(entry_input.get(), on_progress_callback = on_progress)
-    
-    extension = combobox.get()
-
     try:
+        youtube = YouTube(entry_input.get(), on_progress_callback = on_progress)
+    
+        extension = combobox.get()
+    
         if (extension not in (MP3, MP4)):
             raise ValueError("Formato no seleccionado")
         
@@ -137,6 +132,12 @@ def download_youtube_video():
 
     except ValueError as ve:
         print(f"Error de formato: {ve}")
+    
+    except VideoUnavailable:
+        change_textbox_status("El video no está disponible o fue eliminado.")
+
+    except RegexMatchError:
+        change_textbox_status("URL inválida.")
         
     except Exception:
             traceback.print_exc()
@@ -202,14 +203,13 @@ def browse_output():
 
     if(selectedOutputPath != ""):
         entry_output.configure(placeholder_text = selectedOutputPath)
+        save_config(save_path=selectedOutputPath)
 
 # (NO TOCAR) DISABLES / ENABLES TEXTBOX FOR LOG WRITTING
 def change_textbox_status(text):
     tb_Status.configure(state="normal")
     tb_Status.insert("end", text + "\n")
     tb_Status.configure(state="disabled")
-
-
 
 """
     --- SCREEN LOGIC ---
@@ -224,9 +224,7 @@ BELOW IS ALL THE CONFIGURATION OF THE GUI:
 """
 
 # INITIALIZE GLOBALS
-# CREATES CONFIG FILE IF NECESSARY, LOADS IF EXISTS
 init_globals()
-check_config_file()
 
 # SCREEN CONFIGURATION
 customtkinter.set_appearance_mode("dark")
@@ -250,14 +248,12 @@ theme_menu.add_command(label="Dark Theme", command = lambda:change_theme("dark")
 theme_menu.add_command(label="System Theme", command = lambda:change_theme("system"))
 
 config_menu.add_cascade(label="Themes", menu=theme_menu)
-config_menu.add_command(label="Remember output path")
 menu.add_cascade(label = "Configutarion", menu = config_menu)
 
 help_menu = tk.Menu(menu, tearoff = False)
 menu.add_cascade(label = "Help", menu = help_menu)
 
 app.configure(menu = menu)
-
 
 # FRAME TITLE
 label = customtkinter.CTkLabel(master=app, text=" Youtube Downloader", font=("Roboto", 24, "bold"), text_color="#2596be")
@@ -300,6 +296,9 @@ bt_Download.grid(column=0, row=7, pady=5, padx=4)
 # STATUS TEXTBOX
 tb_Status = customtkinter.CTkTextbox(master=framePaths, width=400, height=220, state="disabled", text_color="white")
 tb_Status.grid(column=0, row=8, pady=4, padx=4) 
+
+# LOADS APP CONFIG
+check_config_file()
 
 # STARTS APP
 app.mainloop()
